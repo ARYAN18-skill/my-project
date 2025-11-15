@@ -1,74 +1,69 @@
 require("dotenv").config({ path: "./config.env" });
-
-const express = require("express");
-const mongoose = require("mongoose");
-const { nanoid } = require("nanoid");
-const cors = require("cors");
+const express = require('express');
+const cors = require('cors');
+const mongoose = require('mongoose');
+const { nanoid } = require('nanoid');
+const path = require('path');
 
 const app = express();
-app.use(express.json());
+
+// Middleware
 app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// ------------------------------
-// MongoDB Connection
-// ------------------------------
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB Connected"))
-  .catch((err) => console.log("MongoDB Error:", err));
+// Serve static frontend files from 'public'
+app.use(express.static(path.join(__dirname, 'public')));
 
-// ------------------------------
-// URL Schema
-// ------------------------------
-const urlSchema = new mongoose.Schema({
-  originalUrl: String,
-  shortId: String,
+// MongoDB connection
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/cloud_project';
+mongoose.connect(MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('MongoDB connected'))
+.catch(err => console.error('MongoDB connection error:', err));
+
+// Sample schema & model
+const ItemSchema = new mongoose.Schema({
+  name: String,
+  code: { type: String, default: () => nanoid(6) },
 });
+const Item = mongoose.model('Item', ItemSchema);
 
-const Url = mongoose.model("Url", urlSchema);
-
-// ------------------------------
-// API to Shorten URL
-// ------------------------------
-app.post("/shorten", async (req, res) => {
+// API routes
+app.get('/api/items', async (req, res) => {
   try {
-    const { originalUrl } = req.body;
-
-    if (!originalUrl) {
-      return res.status(400).json({ error: "URL is required" });
-    }
-
-    const shortId = nanoid(6);
-
-    await Url.create({ originalUrl, shortId });
-
-    res.json({
-      shortUrl: `${process.env.BASE_URL}/${shortId}`,
-    });
+    const items = await Item.find();
+    res.json(items);
   } catch (err) {
-    console.log("Error in /shorten API:", err);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ------------------------------
-// Redirect API
-// ------------------------------
-app.get("/:shortId", async (req, res) => {
+app.post('/api/items', async (req, res) => {
   try {
-    const record = await Url.findOne({ shortId: req.params.shortId });
-
-    if (!record) return res.status(404).send("URL not found");
-
-    res.redirect(record.originalUrl);
+    const newItem = new Item({ name: req.body.name });
+    await newItem.save();
+    res.status(201).json(newItem);
   } catch (err) {
-    console.log("Redirect Error:", err);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ------------------------------
-// Start Server
-// ------------------------------
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Catch-all route for frontend (for SPA or index.html)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// 404 handler for any unmatched requests (optional, mostly for APIs)
+app.use((req, res) => {
+  res.status(404).send('Route not found');
+});
+
+// Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
