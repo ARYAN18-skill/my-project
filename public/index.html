@@ -3,10 +3,113 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Cloud Project</title>
+  <title>URL Shortener | Cloud Project</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f7fa;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .container {
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      width: 400px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    h1 {
+      margin-bottom: 20px;
+      font-size: 24px;
+      color: #222;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      background: #2dbbd4;
+      border: none;
+      color: white;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:hover {
+      background: #25a4bb;
+    }
+    .result {
+      margin-top: 20px;
+      font-size: 16px;
+      color: #333;
+      word-break: break-all;
+    }
+    .copy-btn {
+      margin-top: 10px;
+      padding: 10px;
+      width: 100%;
+      border-radius: 8px;
+      background: #ff7a59;
+      border: none;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .copy-btn:hover {
+      background: #e56a4e;
+    }
+  </style>
 </head>
 <body>
-  <h1>Hello! My Cloud Project is Live on Render</h1>
-  <p>Try visiting <code>/api/items</code> to see your backend in action.</p>
+
+<div class="container">
+  <h1>URL Shortener</h1>
+
+  <input type="text" id="longUrl" placeholder="Paste your long URL here">
+
+  <button onclick="shortenUrl()">Shorten URL</button>
+
+  <div class="result" id="result"></div>
+</div>
+
+<script>
+  async function shortenUrl() {
+    const longUrl = document.getElementById("longUrl").value;
+    if (!longUrl) return alert("Please enter a URL!");
+
+    const response = await fetch("/api/items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: longUrl })
+    });
+
+    const data = await response.json();
+    
+    const shortUrl = `${window.location.origin}/${data.code}`;
+    
+    document.getElementById("result").innerHTML = `
+      <strong>Short URL:</strong> <br>
+      <a href="${shortUrl}" target="_blank">${shortUrl}</a>
+      <button class="copy-btn" onclick="copyShortUrl('${shortUrl}')">Copy</button>
+    `;
+  }
+
+  function copyShortUrl(url) {
+    navigator.clipboard.writeText(url);
+    alert("Short URL Copied!");
+  }
+</script>
+
 </body>
 </html>
