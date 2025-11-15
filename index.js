@@ -50,6 +50,22 @@ app.post('/api/items', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+// Redirect route for short URLs
+app.get('/:code', async (req, res) => {
+  try {
+    const item = await Item.findOne({ code: req.params.code });
+
+    if (!item) {
+      return res.status(404).send('Invalid short URL');
+    }
+
+    // Redirect to original URL
+    res.redirect(item.name);
+  } catch (err) {
+    res.status(500).send('Server error');
+  }
+});
+
 
 // Optional 404 for unmatched API requests
 app.use((req, res) => {
