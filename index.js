@@ -3,10 +3,14 @@ const express = require("express");
 const mongoose = require("mongoose");
 const { nanoid } = require("nanoid");
 const cors = require("cors");
+const path = require("path");
 
 const app = express();
 app.use(express.json());
 app.use(cors());
+
+// Serve frontend FIRST
+app.use(express.static(path.join(__dirname, "public")));
 
 // MongoDB connection
 mongoose.connect(process.env.MONGO_URI)
@@ -48,19 +52,10 @@ app.get("/:shortId", async (req, res) => {
   res.redirect(record.originalUrl);
 });
 
-// Serve frontend
-app.use(express.static("public"));
-const path = require("path");
-
-// Serve frontend
-app.use(express.static(path.join(__dirname, "public")));
-
-
-// Fallback
-app.use((req, res) => {
-  res.status(404).send("Route not found");
+// Fallback — load frontend (NOT 404)
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// Server
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
