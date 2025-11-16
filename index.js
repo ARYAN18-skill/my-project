@@ -30,7 +30,6 @@ app.post("/shorten", async (req, res) => {
   }
 
   const shortId = nanoid(6);
-
   await Url.create({ originalUrl, shortId });
 
   res.json({
@@ -49,8 +48,8 @@ app.get("/:shortId", async (req, res) => {
   res.redirect(record.originalUrl);
 });
 
-// Fallback route
-app.all("*", (req, res) => {
+// Fallback route (SAFE)
+app.use((req, res) => {
   res.status(404).send("Route not found");
 });
 
