@@ -48,7 +48,15 @@ app.get("/:shortId", async (req, res) => {
   res.redirect(record.originalUrl);
 });
 
-// Fallback route (SAFE)
+// Serve frontend
+app.use(express.static("public"));
+const path = require("path");
+
+// Serve frontend
+app.use(express.static(path.join(__dirname, "public")));
+
+
+// Fallback
 app.use((req, res) => {
   res.status(404).send("Route not found");
 });
