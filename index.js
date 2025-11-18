@@ -2,122 +2,166 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-const path = require("path");
 const multer = require("multer");
+const sharp = require("sharp");
+const path = require("path");
+const fs = require("fs");
+const axios = require("axios");
 const { v2: cloudinary } = require("cloudinary");
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Serve frontend
+// Serve frontend files
 app.use(express.static(path.join(__dirname, "public")));
 
-
-// ------------------------------------------------------
-// 1. CLOUDINARY CONFIG
-// ------------------------------------------------------
+// --------------------- Cloudinary Config ---------------------
 cloudinary.config({
-  cloud_name: process.env.CLOUD_NAME, 
+  cloud_name: process.env.CLOUD_NAME,
   api_key: process.env.CLOUD_API_KEY,
   api_secret: process.env.CLOUD_API_SECRET,
 });
 
+// --------------------- MongoDB Config -------------------------
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB Connected"))
+  .catch((err) => console.log("MongoDB Error:", err));
 
-// ------------------------------------------------------
-// 2. MULTER CONFIG (TEMPORARY LOCAL STORAGE)
-// ------------------------------------------------------
+const imageSchema = new mongoose.Schema({
+  filename: String,
+  imageUrl: String,
+  publicId: String,
+  sizeKB: Number,
+  uploadedAt: { type: Date, default: Date.now },
+});
+
+const Image = mongoose.model("Image", imageSchema);
+
+// --------------------- Multer Setup --------------------------
 const storage = multer.diskStorage({
   destination: "uploads/",
   filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname)); 
-  }
+    cb(null, Date.now() + path.extname(file.originalname)); // keep extension
+  },
 });
 const upload = multer({ storage });
 
-
-// ------------------------------------------------------
-// 3. DATABASE (RUNS ONLY ON RENDER WITH ENV VARS)
-// ------------------------------------------------------
-if (process.env.MONGO_URI) {
-  mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("MongoDB Connected"))
-    .catch(err => console.log("MongoDB Error:", err));
-} else {
-  console.log("MONGO_URI not found — skipping MongoDB (local development)");
+// --------------------- Helpers -------------------------------
+function removeFile(filePath) {
+  try {
+    fs.unlinkSync(filePath);
+  } catch (err) {}
 }
 
-// Schema for stored images (Render only)
-let ImageModel = null;
-
-if (process.env.MONGO_URI) {
-  const imageSchema = new mongoose.Schema({
-    imageUrl: String,
-    uploadedAt: { type: Date, default: Date.now }
-  });
-
-  ImageModel = mongoose.model("Image", imageSchema);
-}
-
-
-// ------------------------------------------------------
-// 4. UPLOAD IMAGE API
-// ------------------------------------------------------
+// --------------------- UPLOAD IMAGE --------------------------
 app.post("/upload-image", upload.single("image"), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: "No file uploaded" });
-    }
+    if (!req.file)
+      return res.json({ success: false, message: "No file uploaded" });
 
-    // Upload to Cloudinary
-    const uploaded = await cloudinary.uploader.upload(req.file.path, {
+    const inputPath = req.file.path;
+    const compressedPath = `uploads/compressed-${req.file.filename}`;
+
+    // Compress using sharp
+    await sharp(inputPath)
+      .resize({ width: 1200, withoutEnlargement: true })
+      .jpeg({ quality: 75 })
+      .toFile(compressedPath);
+
+    const sizeKB = Math.round(fs.statSync(compressedPath).size / 1024);
+
+    // Upload compressed file to Cloudinary
+    const uploadResult = await cloudinary.uploader.upload(compressedPath, {
       folder: "cloud_project_images",
     });
 
-    let savedImage = null;
+    // Save metadata in MongoDB
+    const saved = await Image.create({
+      filename: req.file.originalname,
+      imageUrl: uploadResult.secure_url,
+      publicId: uploadResult.public_id,
+      sizeKB,
+    });
 
-    // Save to MongoDB ONLY if available (Render)
-    if (ImageModel) {
-      savedImage = await ImageModel.create({
-        imageUrl: uploaded.secure_url
-      });
-    }
+    // Remove temp files
+    removeFile(inputPath);
+    removeFile(compressedPath);
 
     res.json({
       success: true,
-      message: "Image uploaded successfully",
-      imageUrl: uploaded.secure_url,
-      id: savedImage ? savedImage._id : null
+      id: saved._id,
+      imageUrl: saved.imageUrl,
+      sizeKB: saved.sizeKB,
+    });
+  } catch (err) {
+    console.log("Upload Error:", err);
+    res.json({ success: false, message: "Upload failed" });
+  }
+});
+
+// --------------------- LIST IMAGES ---------------------------
+app.get("/images", async (req, res) => {
+  const list = await Image.find().sort({ uploadedAt: -1 });
+  res.json(list);
+});
+
+// --------------------- VIEW IMAGE ----------------------------
+app.get("/view/:id", async (req, res) => {
+  try {
+    const img = await Image.findById(req.params.id);
+    if (!img) return res.status(404).send("Image not found");
+    res.redirect(img.imageUrl);
+  } catch {
+    res.status(500).send("Error");
+  }
+});
+
+// --------------------- DOWNLOAD IMAGE ------------------------
+app.get("/download/:id", async (req, res) => {
+  try {
+    const img = await Image.findById(req.params.id);
+    if (!img) return res.status(404).send("Image not found");
+
+    const response = await axios.get(img.imageUrl, {
+      responseType: "stream",
     });
 
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${img.filename}"`
+    );
+    res.setHeader("Content-Type", "application/octet-stream");
+
+    response.data.pipe(res);
   } catch (err) {
-    console.error("Upload Error:", err);
-    res.status(500).json({ success: false, message: "Upload failed" });
+    console.log("Download Error:", err);
+    res.status(500).send("Download failed");
   }
 });
 
+// --------------------- DELETE IMAGE --------------------------
+app.delete("/delete-image/:id", async (req, res) => {
+  try {
+    const img = await Image.findById(req.params.id);
+    if (!img) return res.json({ success: false });
 
-// ------------------------------------------------------
-// 5. GET ALL IMAGES (ONLY WORKS ON RENDER WITH MONGO)
-// ------------------------------------------------------
-app.get("/images", async (req, res) => {
-  if (!ImageModel) {
-    return res.json([]);  // local mode, no DB
+    await cloudinary.uploader.destroy(img.publicId);
+    await Image.findByIdAndDelete(req.params.id);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.log("Delete Error:", err);
+    res.json({ success: false });
   }
-
-  const images = await ImageModel.find().sort({ uploadedAt: -1 });
-  res.json(images);
 });
 
-
-// ------------------------------------------------------
-// 6. FALLBACK ROUTE (EXPRESS 5 SAFE)
-// ------------------------------------------------------
-app.use((req, res) => {
+// --------------------- FALLBACK ------------------------------
+app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-
-// ------------------------------------------------------
+// --------------------- START SERVER --------------------------
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log("Server running on port", PORT));
