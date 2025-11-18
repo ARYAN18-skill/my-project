@@ -1,31 +1,28 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>URL Shortener</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cloud Image Uploader</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h2>Simple URL Shortener</h2>
 
-  <input id="urlInput" type="text" placeholder="Enter URL" style="width:300px;">
-  <button onclick="shortenUrl()">Shorten</button>
+  <h1>Cloud Image Uploader</h1>
 
-  <p id="result"></p>
+  <div class="upload-box">
+    <form id="uploadForm">
+      <input type="file" id="imageInput" accept="image/*" required />
+      <button type="submit">Upload Image</button>
+    </form>
+  </div>
 
-  <script>
-    async function shortenUrl() {
-      const url = document.getElementById("urlInput").value;
+  <h2>Uploaded Image</h2>
+  <img id="uploadedImage" style="display:none; max-width:300px; margin-top:20px;" />
 
-      const response = await fetch("https://my-project-vglg.onrender.com/shorten", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ originalUrl: url })
-      });
+  <h2>Gallery</h2>
+  <div id="gallery" class="gallery"></div>
 
-      const data = await response.json();
-      document.getElementById("result").innerHTML = `
-        Short URL: <a href="${data.shortUrl}" target="_blank">${data.shortUrl}</a>
-      `;
-    }
-  </script>
+  <script src="script.js"></script>
 </body>
 </html>
