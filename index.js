@@ -55,16 +55,16 @@ function removeFile(filePath) {
   } catch (err) {}
 }
 
-// --------------------- UPLOAD IMAGE --------------------------
 app.post("/upload-image", upload.single("image"), async (req, res) => {
   try {
-    if (!req.file)
+    if (!req.file) {
       return res.json({ success: false, message: "No file uploaded" });
+    }
 
     const inputPath = req.file.path;
     const compressedPath = `uploads/compressed-${req.file.filename}`;
 
-    // Compress using sharp
+    // Compress image
     await sharp(inputPath)
       .resize({ width: 1200, withoutEnlargement: true })
       .jpeg({ quality: 75 })
@@ -72,16 +72,16 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
 
     const sizeKB = Math.round(fs.statSync(compressedPath).size / 1024);
 
-    // Upload compressed file to Cloudinary
+    // Upload to Cloudinary
     const uploadResult = await cloudinary.uploader.upload(compressedPath, {
       folder: "cloud_project_images",
     });
 
-    // Save metadata in MongoDB
+    // Save metadata to Mongo
     const saved = await Image.create({
       filename: req.file.originalname,
       imageUrl: uploadResult.secure_url,
-      publicId: uploadResult.public_id,
+      publicId: uploadResult.public_id,  // IMPORTANT field
       sizeKB,
     });
 
@@ -95,11 +95,13 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
       imageUrl: saved.imageUrl,
       sizeKB: saved.sizeKB,
     });
+
   } catch (err) {
     console.log("Upload Error:", err);
     res.json({ success: false, message: "Upload failed" });
   }
 });
+
 
 // --------------------- LIST IMAGES ---------------------------
 app.get("/images", async (req, res) => {
@@ -141,13 +143,24 @@ app.get("/download/:id", async (req, res) => {
   }
 });
 
-// --------------------- DELETE IMAGE --------------------------
 app.delete("/delete-image/:id", async (req, res) => {
   try {
     const img = await Image.findById(req.params.id);
-    if (!img) return res.json({ success: false });
 
-    await cloudinary.uploader.destroy(img.publicId);
+    if (!img) {
+      return res.json({ success: false, message: "Image not found in DB" });
+    }
+
+    // MUST delete using publicId
+    if (img.publicId) {
+      const cloudRes = await cloudinary.uploader.destroy(img.publicId);
+
+      if (cloudRes.result !== "ok" && cloudRes.result !== "not found") {
+        console.log("Cloudinary delete error:", cloudRes);
+        return res.json({ success: false, message: "Cloudinary delete failed" });
+      }
+    }
+
     await Image.findByIdAndDelete(req.params.id);
 
     res.json({ success: true });
