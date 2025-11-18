@@ -1,40 +1,80 @@
-// Upload Image
-document.getElementById("uploadForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
+const uploadForm = document.getElementById("uploadForm");
+const imageInput = document.getElementById("imageInput");
+const previewImg = document.getElementById("preview");
+const gallery = document.getElementById("gallery");
 
-  const file = document.getElementById("imageInput").files[0];
+// Preview Image
+imageInput.addEventListener("change", () => {
+  const file = imageInput.files[0];
+  if (!file) return;
+  previewImg.src = URL.createObjectURL(file);
+  previewImg.style.display = "block";
+});
+
+// Upload Handler
+uploadForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const file = imageInput.files[0];
+  if (!file) return alert("Select an image first.");
+
   const formData = new FormData();
   formData.append("image", file);
 
-  const res = await fetch("/upload-image", {
-    method: "POST",
-    body: formData,
-  });
-
+  const res = await fetch("/upload-image", { method: "POST", body: formData });
   const data = await res.json();
 
   if (data.success) {
-    const img = document.getElementById("uploadedImage");
-    img.src = data.imageUrl;
-    img.style.display = "block";
-
-    loadGallery(); // refresh gallery
+    alert("Photo uploaded successfully");
+    loadGallery();
+    imageInput.value = "";
+    previewImg.style.display = "none";
   }
 });
 
-// Load gallery
+// Load Gallery
 async function loadGallery() {
+  gallery.innerHTML = "<p>Loading photos...</p>";
+
   const res = await fetch("/images");
   const images = await res.json();
 
-  const gallery = document.getElementById("gallery");
-  gallery.innerHTML = ""; // reset
+  gallery.innerHTML = "";
 
   images.forEach(img => {
-    const imageTag = document.createElement("img");
-    imageTag.src = img.imageUrl;
-    gallery.appendChild(imageTag);
+    const card = document.createElement("div");
+    card.className = "photo-card";
+
+    card.innerHTML = `
+      <img src="${img.imageUrl}">
+      <div class="card-actions">
+        <button onclick="viewImage('${img._id}')">View</button>
+        <button onclick="downloadImage('${img._id}')">Download</button>
+        <button onclick="deleteImage('${img._id}')">Delete</button>
+      </div>
+    `;
+
+    gallery.appendChild(card);
   });
+}
+
+function viewImage(id) {
+  window.open(`/view/${id}`, "_blank");
+}
+
+function downloadImage(id) {
+  window.location = `/download/${id}`;
+}
+
+async function deleteImage(id) {
+  if (!confirm("Delete this photo?")) return;
+  const res = await fetch(`/delete-image/${id}`, { method: "DELETE" });
+  const data = await res.json();
+  if (data.success) {
+    loadGallery();
+    alert("Deleted");
+  } else {
+    alert("Failed to delete");
+  }
 }
 
 loadGallery();

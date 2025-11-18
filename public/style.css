@@ -1,65 +1,119 @@
+/* GENERAL */
 body {
-  font-family: Arial, sans-serif;
-  background: #f2f2f2;
-  text-align: center;
   margin: 0;
-  padding: 0;
+  font-family: Arial, sans-serif;
+  background: #f5f7fa;
+  color: #333;
 }
 
-.container {
-  width: 80%;
-  max-width: 800px;
-  margin: auto;
-  padding: 20px;
+/* HEADER */
+.header {
+  text-align: center;
+  padding: 25px 10px;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
-
-h1 {
-  margin-bottom: 20px;
+.header h1 {
+  margin: 0;
   font-size: 32px;
 }
-
-.upload-box {
-  background: white;
-  padding: 20px;
-  border-radius: 10px;
-  box-shadow: 0 0 5px rgba(0,0,0,0.1);
-  margin-bottom: 30px;
+.subtitle {
+  margin-top: 5px;
+  font-size: 15px;
+  color: #666;
 }
 
+/* UPLOAD SECTION */
+.upload-section {
+  text-align: center;
+  margin: 25px 0;
+}
 #imageInput {
-  margin: 10px 0;
+  padding: 8px;
 }
-
-button {
-  background: #007bff;
-  color: white;
-  padding: 8px 16px;
+.upload-btn {
+  background: #0066ff;
   border: none;
-  cursor: pointer;
+  padding: 9px 18px;
   border-radius: 5px;
-  font-size: 14px;
+  color: white;
+  cursor: pointer;
+  margin-left: 10px;
+  font-size: 15px;
+}
+.upload-btn:hover {
+  background: #0050d4;
 }
 
-button:hover {
-  background: #0069d9;
+/* PREVIEW */
+.preview-container {
+  text-align: center;
+  margin-bottom: 20px;
 }
-
 .preview-img {
-  margin-top: 20px;
-  max-width: 300px;
+  max-width: 280px;
   border-radius: 8px;
-  box-shadow: 0 0 4px rgba(0,0,0,0.2);
+  box-shadow: 0 3px 12px rgba(0,0,0,0.2);
 }
 
-.gallery {
-  margin-top: 20px;
+/* GALLERY */
+.gallery-container {
+  width: 90%;
+  margin: auto;
+}
+.gallery-container h2 {
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+.photo-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 15px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 18px;
 }
 
-.gallery-item img {
+/* PHOTO CARD */
+.photo-card {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+  transition: transform 0.15s;
+}
+.photo-card:hover {
+  transform: scale(1.03);
+}
+
+.photo-card img {
   width: 100%;
-  border-radius: 6px;
-  box-shadow: 0 0 4px rgba(0,0,0,0.2);
+  height: 180px;
+  object-fit: cover;
+}
+
+/* ACTION BUTTONS */
+.card-actions {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+  padding: 8px;
+  display: flex;
+  justify-content: space-between;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.photo-card:hover .card-actions {
+  opacity: 1;
+}
+.card-actions button {
+  background: rgba(255,255,255,0.9);
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.card-actions button:hover {
+  background: white;
 }
