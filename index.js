@@ -158,7 +158,7 @@ app.delete("/delete-image/:id", async (req, res) => {
 });
 
 // --------------------- FALLBACK ------------------------------
-app.get("*", (req, res) => {
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
