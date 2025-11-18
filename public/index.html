@@ -1,28 +1,76 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cloud Image Uploader</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <h1>Cloud Image Uploader</h1>
+  <div class="container">
+    <h1>Cloud Image Uploader</h1>
 
-  <div class="upload-box">
-    <form id="uploadForm">
-      <input type="file" id="imageInput" accept="image/*" required />
-      <button type="submit">Upload Image</button>
-    </form>
+    <div class="upload-box">
+      <form id="uploadForm">
+        <input type="file" id="imageInput" name="image" accept="image/*">
+        <button type="submit">Upload Image</button>
+      </form>
+    </div>
+
+    <h2>Uploaded Image</h2>
+    <img id="preview" class="preview-img" style="display:none;">
+
+    <h2>Gallery</h2>
+    <div id="gallery" class="gallery"></div>
   </div>
 
-  <h2>Uploaded Image</h2>
-  <img id="uploadedImage" style="display:none; max-width:300px; margin-top:20px;" />
 
-  <h2>Gallery</h2>
-  <div id="gallery" class="gallery"></div>
+<script>
+  const uploadForm = document.getElementById("uploadForm");
+  const imageInput = document.getElementById("imageInput");
+  const previewImg = document.getElementById("preview");
+  const gallery = document.getElementById("gallery");
 
-  <script src="script.js"></script>
+  imageInput.addEventListener("change", () => {
+    previewImg.src = URL.createObjectURL(imageInput.files[0]);
+    previewImg.style.display = "block";
+  });
+
+  uploadForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const file = imageInput.files[0];
+    if (!file) return alert("Please select an image!");
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    const res = await fetch("/upload-image", {
+      method: "POST",
+      body: formData
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      alert("Image uploaded successfully!");
+      loadGallery();
+    }
+  });
+
+  async function loadGallery() {
+    const res = await fetch("/images");
+    const images = await res.json();
+
+    gallery.innerHTML = "";
+    images.forEach(img => {
+      gallery.innerHTML += `
+        <div class="gallery-item">
+          <img src="${img.imageUrl}">
+        </div>`;
+    });
+  }
+
+  loadGallery();
+</script>
+
 </body>
 </html>

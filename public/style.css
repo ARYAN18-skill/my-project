@@ -1,44 +1,65 @@
 body {
   font-family: Arial, sans-serif;
-  text-align: center;
-  margin: 30px;
   background: #f2f2f2;
+  text-align: center;
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  width: 80%;
+  max-width: 800px;
+  margin: auto;
+  padding: 20px;
+}
+
+h1 {
+  margin-bottom: 20px;
+  font-size: 32px;
 }
 
 .upload-box {
   background: white;
   padding: 20px;
-  width: 350px;
-  margin: auto;
-  border-radius: 8px;
-  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  border-radius: 10px;
+  box-shadow: 0 0 5px rgba(0,0,0,0.1);
+  margin-bottom: 30px;
+}
+
+#imageInput {
+  margin: 10px 0;
 }
 
 button {
-  padding: 10px 20px;
-  background: #0a6efd;
-  border: none;
+  background: #007bff;
   color: white;
-  border-radius: 5px;
+  padding: 8px 16px;
+  border: none;
   cursor: pointer;
-  margin-top: 10px;
+  border-radius: 5px;
+  font-size: 14px;
 }
 
 button:hover {
-  background: #0048c7;
+  background: #0069d9;
+}
+
+.preview-img {
+  margin-top: 20px;
+  max-width: 300px;
+  border-radius: 8px;
+  box-shadow: 0 0 4px rgba(0,0,0,0.2);
 }
 
 .gallery {
   margin-top: 20px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 15px;
 }
 
-.gallery img {
-  width: 200px;
-  height: auto;
-  border-radius: 8px;
-  box-shadow: 0 0 5px rgba(0,0,0,0.2);
+.gallery-item img {
+  width: 100%;
+  border-radius: 6px;
+  box-shadow: 0 0 4px rgba(0,0,0,0.2);
 }
