@@ -121,6 +121,46 @@ app.get("/search", async (req, res) => {
   }
 });
 
+// --------------------- DOWNLOAD IMAGE BY TITLE ---------------------
+app.get("/download/:title", async (req, res) => {
+  try {
+    const title = req.params.title.trim().toLowerCase();
+
+    const imageDoc = await Image.findOne({ title });
+    if (!imageDoc) {
+      return res.status(404).send("Image not found in DB");
+    }
+
+    // Generate signed URL from Cloudinary
+    const signedUrl = cloudinary.url(imageDoc.publicId, {
+      secure: true,
+      sign_url: true,
+      type: "private",
+      expires_at: Math.floor(Date.now() / 1000) + 300,
+    });
+
+    // Download the image from the signed URL
+    const response = await axios({
+      url: signedUrl,
+      responseType: "stream",
+    });
+
+    // Force the browser to download
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${imageDoc.title}.jpg"`
+    );
+    res.setHeader("Content-Type", "image/jpeg");
+
+    response.data.pipe(res);
+
+  } catch (err) {
+    console.error("Download Error:", err);
+    res.status(500).send("Download failed");
+  }
+});
+
+
 // --------------------- Fallback to Frontend ------------------
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));

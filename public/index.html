@@ -86,8 +86,13 @@
 
     <script>
         async function searchImage() {
-            const title = document.getElementById("searchBox").value;
+            const title = document.getElementById("searchBox").value.trim();
             const resultDiv = document.getElementById("result");
+
+            if (!title) {
+                resultDiv.innerHTML = `<p class="error">Please enter a title.</p>`;
+                return;
+            }
 
             resultDiv.innerHTML = "Searching...";
 
@@ -96,11 +101,14 @@
 
             if (data.error) {
                 resultDiv.innerHTML = `<p class="error">${data.error}</p>`;
-            } else {
-                resultDiv.innerHTML = `
-                    <img src="${data.url}" alt="Image">
-                `;
+                return;
             }
+
+            resultDiv.innerHTML = `
+                <a href="/download/${title}" title="Click to download">
+                    <img src="${data.url}" alt="Image" style="cursor: pointer;">
+                </a>
+            `;
         }
     </script>
 </body>
