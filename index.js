@@ -34,31 +34,34 @@ const imageSchema = new mongoose.Schema({
 
 const Image = mongoose.model("Image", imageSchema);
 
-// --------------------- Auto Fetch Logic -----------------------
+// --------------------- SerpAPI Fetch Function ----------------
 async function fetchImageFromWeb(query) {
   try {
-    const searchUrl = `https://duckduckgo.com/i.js?q=${encodeURIComponent(query)}`;
+    const serpURL = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(
+      query
+    )}&api_key=${process.env.SERP_API_KEY}`;
 
-    const response = await axios.get(searchUrl, {
-      headers: { "User-Agent": "Mozilla/5.0" },
-    });
+    const response = await axios.get(serpURL);
 
-    if (!response.data.results || response.data.results.length === 0) {
+    if (
+      !response.data.images_results ||
+      response.data.images_results.length === 0
+    ) {
       return null;
     }
 
-    let imageUrl = response.data.results[0].image;
+    const imageUrl = response.data.images_results[0].original;
 
-    // Download the image temporarily
-    const imgData = await axios({
+    // Download image temporarily
+    const imgBytes = await axios({
       url: imageUrl,
       responseType: "arraybuffer",
     });
 
-    const tempPath = "temp_download.jpg";
-    fs.writeFileSync(tempPath, imgData.data);
+    const tempPath = "temp_image.jpg";
+    fs.writeFileSync(tempPath, imgBytes.data);
 
-    // Upload to Cloudinary as PRIVATE
+    // Upload to Cloudinary
     const upload = await cloudinary.uploader.upload(tempPath, {
       folder: "auto_images",
       type: "private",
@@ -71,9 +74,8 @@ async function fetchImageFromWeb(query) {
       publicId: upload.public_id,
       imageUrl: upload.secure_url,
     };
-
   } catch (err) {
-    console.log("Web Fetch Error:", err);
+    console.log("SerpAPI Error:", err);
     return null;
   }
 }
@@ -83,17 +85,17 @@ app.get("/search", async (req, res) => {
   try {
     const title = req.query.title.trim().toLowerCase();
 
-    // STEP 1: Try to find in MongoDB
+    // STEP 1: Check MongoDB cache
     let imageDoc = await Image.findOne({ title });
 
-    // STEP 2: If not found, auto-fetch from the web
+    // STEP 2: If not found, auto-fetch image
     if (!imageDoc) {
-      console.log("Not in DB, fetching from web...");
+      console.log("Image not found in DB. Fetching from SerpAPI...");
 
       const fetched = await fetchImageFromWeb(title);
 
       if (!fetched) {
-        return res.json({ error: "Image not found on the internet" });
+        return res.json({ error: "No image found on the internet." });
       }
 
       imageDoc = await Image.create({
@@ -111,7 +113,7 @@ app.get("/search", async (req, res) => {
       expires_at: Math.floor(Date.now() / 1000) + 300, // 5 minutes expiry
     });
 
-    return res.json({ url: signedUrl });
+    res.json({ url: signedUrl });
 
   } catch (err) {
     console.error("Search Error:", err);
@@ -119,11 +121,11 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// --------------------- FALLBACK ------------------------------
+// --------------------- Fallback to Frontend ------------------
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// --------------------- START SERVER --------------------------
+// --------------------- Start the Server -----------------------
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log("Server running on port", PORT));
