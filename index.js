@@ -2,18 +2,14 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-const multer = require("multer");
-const sharp = require("sharp");
-const path = require("path");
-const fs = require("fs");
 const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
 const { v2: cloudinary } = require("cloudinary");
 
 const app = express();
 app.use(express.json());
 app.use(cors());
-
-// Serve frontend files
 app.use(express.static(path.join(__dirname, "public")));
 
 // --------------------- Cloudinary Config ---------------------
@@ -30,180 +26,100 @@ mongoose
   .catch((err) => console.log("MongoDB Error:", err));
 
 const imageSchema = new mongoose.Schema({
-  filename: String,
+  title: String,
+  publicId: String,
   imageUrl: String,
-  publicId: String, // NOTE: your DB uses publicId (camelCase)
-  sizeKB: Number,
   uploadedAt: { type: Date, default: Date.now },
 });
 
 const Image = mongoose.model("Image", imageSchema);
 
-// --------------------- Multer Setup --------------------------
-const storage = multer.diskStorage({
-  destination: "uploads/",
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
-const upload = multer({ storage });
-
-// --------------------- Helpers -------------------------------
-function removeFile(filePath) {
+// --------------------- Auto Fetch Logic -----------------------
+async function fetchImageFromWeb(query) {
   try {
-    fs.unlinkSync(filePath);
-  } catch (err) {}
-}
+    const searchUrl = `https://duckduckgo.com/i.js?q=${encodeURIComponent(query)}`;
 
-// --------------------- Image Compression ---------------------
-async function compressImage(input, output) {
-  await sharp(input)
-    .resize(1200) // reduce big images
-    .jpeg({ quality: 80 })
-    .toFile(output);
-}
+    const response = await axios.get(searchUrl, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
 
-// --------------------- UPLOAD ROUTE --------------------------
-app.post("/upload", upload.single("image"), async (req, res) => {
-  try {
-    const inputPath = req.file.path;
-    const compressedPath = "compressed-" + req.file.filename;
+    if (!response.data.results || response.data.results.length === 0) {
+      return null;
+    }
 
-    // Compress image
-    await compressImage(inputPath, compressedPath);
+    let imageUrl = response.data.results[0].image;
 
-    // Upload to Cloudinary (private)
-    const uploadResult = await cloudinary.uploader.upload(compressedPath, {
-      folder: "images",
+    // Download the image temporarily
+    const imgData = await axios({
+      url: imageUrl,
+      responseType: "arraybuffer",
+    });
+
+    const tempPath = "temp_download.jpg";
+    fs.writeFileSync(tempPath, imgData.data);
+
+    // Upload to Cloudinary as PRIVATE
+    const upload = await cloudinary.uploader.upload(tempPath, {
+      folder: "auto_images",
       type: "private",
       resource_type: "image",
     });
 
-    const sizeKB = Math.round(req.file.size / 1024);
+    fs.unlinkSync(tempPath);
 
-    // Save metadata to MongoDB
-    const saved = await Image.create({
-      filename: req.file.originalname,
-      imageUrl: uploadResult.secure_url,
-      publicId: uploadResult.public_id,
-      sizeKB,
-    });
-
-    // Clean temp files
-    removeFile(inputPath);
-    removeFile(compressedPath);
-
-    res.json({
-      success: true,
-      id: saved._id,
-      imageUrl: saved.imageUrl,
-      sizeKB: saved.sizeKB,
-    });
+    return {
+      publicId: upload.public_id,
+      imageUrl: upload.secure_url,
+    };
 
   } catch (err) {
-    console.log("Upload Error:", err);
-    res.json({ success: false, message: "Upload failed" });
+    console.log("Web Fetch Error:", err);
+    return null;
   }
-});
+}
 
-// --------------------- SIGNED URL SEARCH ROUTE ----------------
+// --------------------- Smart Search Route ---------------------
 app.get("/search", async (req, res) => {
   try {
-    const title = req.query.title;
+    const title = req.query.title.trim().toLowerCase();
 
-    const imageDoc = await Image.findOne({ filename: title });
+    // STEP 1: Try to find in MongoDB
+    let imageDoc = await Image.findOne({ title });
 
+    // STEP 2: If not found, auto-fetch from the web
     if (!imageDoc) {
-      return res.json({ error: "Image not found" });
+      console.log("Not in DB, fetching from web...");
+
+      const fetched = await fetchImageFromWeb(title);
+
+      if (!fetched) {
+        return res.json({ error: "Image not found on the internet" });
+      }
+
+      imageDoc = await Image.create({
+        title,
+        publicId: fetched.publicId,
+        imageUrl: fetched.imageUrl,
+      });
     }
 
-    // Generate secure signed URL (expires in 5 minutes)
+    // STEP 3: Generate secure signed Cloudinary URL
     const signedUrl = cloudinary.url(imageDoc.publicId, {
       secure: true,
       sign_url: true,
       type: "private",
-      expires_at: Math.floor(Date.now() / 1000) + 300,
+      expires_at: Math.floor(Date.now() / 1000) + 300, // 5 minutes expiry
     });
 
     return res.json({ url: signedUrl });
 
   } catch (err) {
     console.error("Search Error:", err);
-    return res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// --------------------- LIST IMAGES ---------------------------
-app.get("/images", async (req, res) => {
-  const list = await Image.find().sort({ uploadedAt: -1 });
-  res.json(list);
-});
-
-// --------------------- VIEW IMAGE ----------------------------
-app.get("/view/:id", async (req, res) => {
-  try {
-    const img = await Image.findById(req.params.id);
-    if (!img) return res.status(404).send("Image not found");
-
-    // redirect to secure URL
-    res.redirect(img.imageUrl);
-
-  } catch {
-    res.status(500).send("Error");
-  }
-});
-
-// --------------------- DOWNLOAD IMAGE ------------------------
-app.get("/download/:id", async (req, res) => {
-  try {
-    const img = await Image.findById(req.params.id);
-    if (!img) return res.status(404).send("Image not found");
-
-    const response = await axios.get(img.imageUrl, { responseType: "stream" });
-
-    res.setHeader("Content-Disposition",
-      `attachment; filename="${img.filename}"`
-    );
-    res.setHeader("Content-Type", "application/octet-stream");
-
-    response.data.pipe(res);
-
-  } catch (err) {
-    console.log("Download Error:", err);
-    res.status(500).send("Download failed");
-  }
-});
-
-// --------------------- DELETE IMAGE --------------------------
-app.delete("/delete-image/:id", async (req, res) => {
-  try {
-    const img = await Image.findById(req.params.id);
-
-    if (!img) {
-      return res.json({ success: false, message: "Image not found in DB" });
-    }
-
-    // DELETE FROM CLOUDINARY
-    if (img.publicId) {
-      const cloudRes = await cloudinary.uploader.destroy(img.publicId);
-
-      if (cloudRes.result !== "ok" && cloudRes.result !== "not found") {
-        console.log("Cloudinary delete error:", cloudRes);
-        return res.json({ success: false, message: "Cloudinary delete failed" });
-      }
-    }dir 
-
-    await Image.findByIdAndDelete(req.params.id);
-
-    res.json({ success: true });
-
-  } catch (err) {
-    console.log("Delete Error:", err);
-    res.json({ success: false });
-  }
-});
-
-// --------------------- FALLBACK FOR FRONTEND -----------------
+// --------------------- FALLBACK ------------------------------
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
