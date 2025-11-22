@@ -1,33 +1,107 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Cloud Image Gallery</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud Image Search</title>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: white;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 80px auto;
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border-radius: 8px;
+            border: none;
+            outline: none;
+            margin-bottom: 15px;
+        }
+
+        button {
+            width: 100%;
+            background: #2563eb;
+            color: white;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        .result {
+            margin-top: 25px;
+            text-align: center;
+        }
+
+        img {
+            max-width: 100%;
+            border-radius: 10px;
+            margin-top: 20px;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.4);
+        }
+
+        .error {
+            color: #f87171;
+            margin-top: 10px;
+        }
+    </style>
 </head>
 
 <body>
-  <header class="header">
-    <h1>My Cloud Photo Gallery</h1>
-    <p class="subtitle">Upload, View and Manage Your Photos</p>
-  </header>
+    <div class="container">
+        <h2>Cloud Image Search</h2>
 
-  <section class="upload-section">
-    <form id="uploadForm">
-      <input type="file" id="imageInput" accept="image/*">
-      <button type="submit" class="upload-btn">Upload Photo</button>
-    </form>
-  </section>
+        <input id="searchBox" type="text" placeholder="Enter image title">
 
-  <section class="preview-container">
-    <img id="preview" class="preview-img" style="display:none;">
-  </section>
+        <button onclick="searchImage()">Search</button>
 
-  <section class="gallery-container">
-    <h2>Your Photos</h2>
-    <div id="gallery" class="photo-grid"></div>
-  </section>
+        <div class="result" id="result"></div>
+    </div>
 
-  <script src="script.js"></script>
+    <script>
+        async function searchImage() {
+            const title = document.getElementById("searchBox").value;
+            const resultDiv = document.getElementById("result");
+
+            resultDiv.innerHTML = "Searching...";
+
+            const response = await fetch(`/search?title=${title}`);
+            const data = await response.json();
+
+            if (data.error) {
+                resultDiv.innerHTML = `<p class="error">${data.error}</p>`;
+            } else {
+                resultDiv.innerHTML = `
+                    <img src="${data.url}" alt="Image">
+                `;
+            }
+        }
+    </script>
 </body>
 </html>

@@ -32,7 +32,7 @@ mongoose
 const imageSchema = new mongoose.Schema({
   filename: String,
   imageUrl: String,
-  publicId: String,
+  publicId: String, // NOTE: your DB uses publicId (camelCase)
   sizeKB: Number,
   uploadedAt: { type: Date, default: Date.now },
 });
@@ -43,7 +43,7 @@ const Image = mongoose.model("Image", imageSchema);
 const storage = multer.diskStorage({
   destination: "uploads/",
   filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname)); // keep extension
+    cb(null, Date.now() + path.extname(file.originalname));
   },
 });
 const upload = multer({ storage });
@@ -55,37 +55,41 @@ function removeFile(filePath) {
   } catch (err) {}
 }
 
-app.post("/upload-image", upload.single("image"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.json({ success: false, message: "No file uploaded" });
-    }
+// --------------------- Image Compression ---------------------
+async function compressImage(input, output) {
+  await sharp(input)
+    .resize(1200) // reduce big images
+    .jpeg({ quality: 80 })
+    .toFile(output);
+}
 
+// --------------------- UPLOAD ROUTE --------------------------
+app.post("/upload", upload.single("image"), async (req, res) => {
+  try {
     const inputPath = req.file.path;
-    const compressedPath = `uploads/compressed-${req.file.filename}`;
+    const compressedPath = "compressed-" + req.file.filename;
 
     // Compress image
-    await sharp(inputPath)
-      .resize({ width: 1200, withoutEnlargement: true })
-      .jpeg({ quality: 75 })
-      .toFile(compressedPath);
+    await compressImage(inputPath, compressedPath);
 
-    const sizeKB = Math.round(fs.statSync(compressedPath).size / 1024);
-
-    // Upload to Cloudinary
+    // Upload to Cloudinary (private)
     const uploadResult = await cloudinary.uploader.upload(compressedPath, {
-      folder: "cloud_project_images",
+      folder: "images",
+      type: "private",
+      resource_type: "image",
     });
 
-    // Save metadata to Mongo
+    const sizeKB = Math.round(req.file.size / 1024);
+
+    // Save metadata to MongoDB
     const saved = await Image.create({
       filename: req.file.originalname,
       imageUrl: uploadResult.secure_url,
-      publicId: uploadResult.public_id,  // IMPORTANT field
+      publicId: uploadResult.public_id,
       sizeKB,
     });
 
-    // Remove temp files
+    // Clean temp files
     removeFile(inputPath);
     removeFile(compressedPath);
 
@@ -102,6 +106,32 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
   }
 });
 
+// --------------------- SIGNED URL SEARCH ROUTE ----------------
+app.get("/search", async (req, res) => {
+  try {
+    const title = req.query.title;
+
+    const imageDoc = await Image.findOne({ filename: title });
+
+    if (!imageDoc) {
+      return res.json({ error: "Image not found" });
+    }
+
+    // Generate secure signed URL (expires in 5 minutes)
+    const signedUrl = cloudinary.url(imageDoc.publicId, {
+      secure: true,
+      sign_url: true,
+      type: "private",
+      expires_at: Math.floor(Date.now() / 1000) + 300,
+    });
+
+    return res.json({ url: signedUrl });
+
+  } catch (err) {
+    console.error("Search Error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
 
 // --------------------- LIST IMAGES ---------------------------
 app.get("/images", async (req, res) => {
@@ -114,7 +144,10 @@ app.get("/view/:id", async (req, res) => {
   try {
     const img = await Image.findById(req.params.id);
     if (!img) return res.status(404).send("Image not found");
+
+    // redirect to secure URL
     res.redirect(img.imageUrl);
+
   } catch {
     res.status(500).send("Error");
   }
@@ -126,23 +159,22 @@ app.get("/download/:id", async (req, res) => {
     const img = await Image.findById(req.params.id);
     if (!img) return res.status(404).send("Image not found");
 
-    const response = await axios.get(img.imageUrl, {
-      responseType: "stream",
-    });
+    const response = await axios.get(img.imageUrl, { responseType: "stream" });
 
-    res.setHeader(
-      "Content-Disposition",
+    res.setHeader("Content-Disposition",
       `attachment; filename="${img.filename}"`
     );
     res.setHeader("Content-Type", "application/octet-stream");
 
     response.data.pipe(res);
+
   } catch (err) {
     console.log("Download Error:", err);
     res.status(500).send("Download failed");
   }
 });
 
+// --------------------- DELETE IMAGE --------------------------
 app.delete("/delete-image/:id", async (req, res) => {
   try {
     const img = await Image.findById(req.params.id);
@@ -151,7 +183,7 @@ app.delete("/delete-image/:id", async (req, res) => {
       return res.json({ success: false, message: "Image not found in DB" });
     }
 
-    // MUST delete using publicId
+    // DELETE FROM CLOUDINARY
     if (img.publicId) {
       const cloudRes = await cloudinary.uploader.destroy(img.publicId);
 
@@ -159,18 +191,19 @@ app.delete("/delete-image/:id", async (req, res) => {
         console.log("Cloudinary delete error:", cloudRes);
         return res.json({ success: false, message: "Cloudinary delete failed" });
       }
-    }
+    }dir 
 
     await Image.findByIdAndDelete(req.params.id);
 
     res.json({ success: true });
+
   } catch (err) {
     console.log("Delete Error:", err);
     res.json({ success: false });
   }
 });
 
-// --------------------- FALLBACK ------------------------------
+// --------------------- FALLBACK FOR FRONTEND -----------------
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
