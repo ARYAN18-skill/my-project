@@ -95,6 +95,7 @@ app.get("/search", async (req, res) => {
       const fetched = await fetchImageFromWeb(title);
 
       if (!fetched) {
+        console.log("SERP API RESPONSE:", serpRes.data);
         return res.json({ error: "No image found on the internet." });
       }
 
