@@ -34,7 +34,6 @@ const imageSchema = new mongoose.Schema({
 
 const Image = mongoose.model("Image", imageSchema);
 
-// --------------------- SerpAPI Fetch Function ----------------
 async function fetchImageFromWeb(query) {
   try {
     const serpURL =
@@ -43,10 +42,14 @@ async function fetchImageFromWeb(query) {
       `&api_key=` +
       process.env.SERP_API_KEY;
 
-    const serpRes = await axios.get(serpURL);
+    const serpRes = await axios.get(serpURL, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      }
+    });
 
     if (!serpRes.data.images_results || serpRes.data.images_results.length === 0) {
-      console.log("SerpAPI returned no results.");
+      console.log("No results found on SerpAPI");
       return null;
     }
 
@@ -77,6 +80,7 @@ async function fetchImageFromWeb(query) {
     return null;
   }
 }
+
 
 // --------------------- Smart Search Route ---------------------
 app.get("/search", async (req, res) => {
