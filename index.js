@@ -35,103 +35,56 @@ const imageSchema = new mongoose.Schema({
 
 const Image = mongoose.model("Image", imageSchema);
 
-// --------------------- FREE IMAGE FETCH USING BING (NO API REQUIRED) ---------------------
 async function fetchImageFromWeb(query) {
   try {
-    const searchUrl =
-      "https://www.bing.com/images/search?q=" + encodeURIComponent(query);
+    const apiUrl =
+      "https://duckduckgo.com/?q=" + encodeURIComponent(query) + "&iax=images&ia=images";
 
-    const response = await axios.get(searchUrl, {
+    // Step 1 — Get DuckDuckGo Token
+    const tokenResponse = await axios.get(apiUrl, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
     });
 
-    const html = response.data;
-
-    const match = html.match(/"murl":"(.*?)"/);
-    if (!match) {
-      console.log("No Bing Image Found");
+    const vqdMatch = tokenResponse.data.match(/vqd='(.*?)'/);
+    if (!vqdMatch) {
+      console.log("DuckDuckGo vqd token not found");
       return null;
     }
 
-    const imageUrl = match[1];
-    console.log("Bing Image URL:", imageUrl);
+    const vqd = vqdMatch[1];
 
+    // Step 2 — Fetch Images JSON
+    const jsonUrl =
+      "https://duckduckgo.com/i.js?l=us-en&o=json&q=" +
+      encodeURIComponent(query) +
+      "&vqd=" +
+      vqd;
+
+    const jsonResponse = await axios.get(jsonUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "application/json",
+      },
+    });
+
+    if (!jsonResponse.data.results || jsonResponse.data.results.length === 0) {
+      console.log("DuckDuckGo returned no images");
+      return null;
+    }
+
+    const imageUrl = jsonResponse.data.results[0].image;
+    console.log("DuckDuckGo Image URL:", imageUrl);
+
+    // Step 3 — Download the image
     const imgResponse = await axios.get(imageUrl, {
       responseType: "arraybuffer",
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        Accept: "image/*;q=0.9,*/*;q=0.8",
-      },
-    });
-
-    const buffer = Buffer.from(imgResponse.data);
-    const type = await FileType.fromBuffer(buffer);
-
-    if (!type || !type.mime.startsWith("image/")) {
-      console.log("INVALID IMAGE from Bing");
-      return null;
-    }
-
-    const tempPath = "temp." + type.ext;
-    fs.writeFileSync(tempPath, buffer);
-
-    const uploadResult = await cloudinary.uploader.upload(tempPath, {
-      folder: "auto_images",
-      resource_type: "image",
-    });
-
-    fs.unlinkSync(tempPath);
-
-    return {
-      publicId: uploadResult.public_id,
-      imageUrl: uploadResult.secure_url,
-    };
-  } catch (err) {
-    console.log("Image Fetch Error:", err.message);
-    return null;
-  }
-}
-
-async function fetchImageFromWeb(query) {
-  try {
-    const searchUrl =
-      "https://www.bing.com/images/search?q=" + encodeURIComponent(query);
-
-    const response = await axios.get(searchUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      },
-    });
-
-    const html = response.data;
-
-    // Try murl first
-    let match = html.match(/"murl":"(.*?)"/);
-
-    // Fallback: imgurl
-    if (!match) {
-      match = html.match(/"imgurl":"(.*?)"/);
-    }
-
-    if (!match) {
-      console.log("No Bing image found in HTML");
-      return null;
-    }
-
-    const imageUrl = match[1].replace(/\\u0026/g, "&");
-    console.log("Final Bing Image URL:", imageUrl);
-
-    const imgResponse = await axios.get(imageUrl, {
-      responseType: "arraybuffer",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        Accept: "image/*;q=0.9,*/*;q=0.8",
       },
     });
 
@@ -157,10 +110,11 @@ async function fetchImageFromWeb(query) {
       imageUrl: uploadResult.secure_url,
     };
   } catch (err) {
-    console.log("Image Fetch Error:", err.message);
+    console.log("DuckDuckGo Fetch Error:", err.message);
     return null;
   }
 }
+
 
 
 // --------------------- DOWNLOAD IMAGE ---------------------
