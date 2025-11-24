@@ -96,35 +96,72 @@ async function fetchImageFromWeb(query) {
   }
 }
 
-// --------------------- SEARCH ROUTE ---------------------
-app.get("/search", async (req, res) => {
+async function fetchImageFromWeb(query) {
   try {
-    const title = req.query.title.trim().toLowerCase();
+    const searchUrl =
+      "https://www.bing.com/images/search?q=" + encodeURIComponent(query);
 
-    let imageDoc = await Image.findOne({ title });
+    const response = await axios.get(searchUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    });
 
-    if (!imageDoc) {
-      console.log("Not in DB → Fetching from Bing…");
+    const html = response.data;
 
-      const fetched = await fetchImageFromWeb(title);
+    // Try murl first
+    let match = html.match(/"murl":"(.*?)"/);
 
-      if (!fetched) {
-        return res.json({ error: "No image found online." });
-      }
-
-      imageDoc = await Image.create({
-        title,
-        publicId: fetched.publicId,
-        imageUrl: fetched.imageUrl,
-      });
+    // Fallback: imgurl
+    if (!match) {
+      match = html.match(/"imgurl":"(.*?)"/);
     }
 
-    return res.json({ url: imageDoc.imageUrl });
+    if (!match) {
+      console.log("No Bing image found in HTML");
+      return null;
+    }
+
+    const imageUrl = match[1].replace(/\\u0026/g, "&");
+    console.log("Final Bing Image URL:", imageUrl);
+
+    const imgResponse = await axios.get(imageUrl, {
+      responseType: "arraybuffer",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "image/*;q=0.9,*/*;q=0.8",
+      },
+    });
+
+    const buffer = Buffer.from(imgResponse.data);
+    const type = await FileType.fromBuffer(buffer);
+
+    if (!type || !type.mime.startsWith("image/")) {
+      console.log("Invalid image downloaded");
+      return null;
+    }
+
+    const tempPath = "temp." + type.ext;
+    fs.writeFileSync(tempPath, buffer);
+
+    const uploadResult = await cloudinary.uploader.upload(tempPath, {
+      folder: "auto_images",
+    });
+
+    fs.unlinkSync(tempPath);
+
+    return {
+      publicId: uploadResult.public_id,
+      imageUrl: uploadResult.secure_url,
+    };
   } catch (err) {
-    console.error("Search Error:", err);
-    return res.status(500).json({ error: "Server Error" });
+    console.log("Image Fetch Error:", err.message);
+    return null;
   }
-});
+}
+
 
 // --------------------- DOWNLOAD IMAGE ---------------------
 app.get("/download/:title", async (req, res) => {
