@@ -37,22 +37,23 @@ const Image = mongoose.model("Image", imageSchema);
 // --------------------- SerpAPI Fetch Function ----------------
 async function fetchImageFromWeb(query) {
   try {
-    const serpURL = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(
-      query
-    )}&api_key=${process.env.SERP_API_KEY}`;
+    const serpURL =
+      `https://serpapi.com/search.json?engine=google_images&q=` +
+      encodeURIComponent(query) +
+      `&api_key=` +
+      process.env.SERP_API_KEY;
 
-    const response = await axios.get(serpURL);
+    const serpRes = await axios.get(serpURL);
 
-    if (
-      !response.data.images_results ||
-      response.data.images_results.length === 0
-    ) {
+    // No results
+    if (!serpRes.data.images_results || serpRes.data.images_results.length === 0) {
+      console.log("No results found on SerpAPI");
       return null;
     }
 
-    const imageUrl = response.data.images_results[0].original;
+    const imageUrl = serpRes.data.images_results[0].original;
 
-    // Download image temporarily
+    // Download image locally
     const imgBytes = await axios({
       url: imageUrl,
       responseType: "arraybuffer",
@@ -75,7 +76,7 @@ async function fetchImageFromWeb(query) {
       imageUrl: upload.secure_url,
     };
   } catch (err) {
-    console.log("SerpAPI Error:", err);
+    console.log("SerpAPI Error:", err.response?.data || err.message);
     return null;
   }
 }
@@ -85,17 +86,14 @@ app.get("/search", async (req, res) => {
   try {
     const title = req.query.title.trim().toLowerCase();
 
-    // STEP 1: Check MongoDB cache
     let imageDoc = await Image.findOne({ title });
 
-    // STEP 2: If not found, auto-fetch image
     if (!imageDoc) {
-      console.log("Image not found in DB. Fetching from SerpAPI...");
+      console.log("Not found in DB. Fetching from SerpAPI…");
 
       const fetched = await fetchImageFromWeb(title);
 
       if (!fetched) {
-        console.log("SERP API RESPONSE:", serpRes.data);
         return res.json({ error: "No image found on the internet." });
       }
 
@@ -106,16 +104,15 @@ app.get("/search", async (req, res) => {
       });
     }
 
-    // STEP 3: Generate secure signed Cloudinary URL
+    // Generate secure signed Cloudinary URL
     const signedUrl = cloudinary.url(imageDoc.publicId, {
       secure: true,
       sign_url: true,
       type: "private",
-      expires_at: Math.floor(Date.now() / 1000) + 300, // 5 minutes expiry
+      expires_at: Math.floor(Date.now() / 1000) + 300,
     });
 
     res.json({ url: signedUrl });
-
   } catch (err) {
     console.error("Search Error:", err);
     res.status(500).json({ error: "Server error" });
@@ -132,7 +129,6 @@ app.get("/download/:title", async (req, res) => {
       return res.status(404).send("Image not found in DB");
     }
 
-    // Generate signed URL from Cloudinary
     const signedUrl = cloudinary.url(imageDoc.publicId, {
       secure: true,
       sign_url: true,
@@ -140,13 +136,11 @@ app.get("/download/:title", async (req, res) => {
       expires_at: Math.floor(Date.now() / 1000) + 300,
     });
 
-    // Download the image from the signed URL
     const response = await axios({
       url: signedUrl,
       responseType: "stream",
     });
 
-    // Force the browser to download
     res.setHeader(
       "Content-Disposition",
       `attachment; filename="${imageDoc.title}.jpg"`
@@ -154,13 +148,11 @@ app.get("/download/:title", async (req, res) => {
     res.setHeader("Content-Type", "image/jpeg");
 
     response.data.pipe(res);
-
   } catch (err) {
     console.error("Download Error:", err);
     res.status(500).send("Download failed");
   }
 });
-
 
 // --------------------- Fallback to Frontend ------------------
 app.use((req, res) => {
@@ -168,5 +160,5 @@ app.use((req, res) => {
 });
 
 // --------------------- Start the Server -----------------------
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server running on port", PORT));
