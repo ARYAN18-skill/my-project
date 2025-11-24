@@ -45,15 +45,13 @@ async function fetchImageFromWeb(query) {
 
     const serpRes = await axios.get(serpURL);
 
-    // No results
     if (!serpRes.data.images_results || serpRes.data.images_results.length === 0) {
-      console.log("No results found on SerpAPI");
+      console.log("SerpAPI returned no results.");
       return null;
     }
 
     const imageUrl = serpRes.data.images_results[0].original;
 
-    // Download image locally
     const imgBytes = await axios({
       url: imageUrl,
       responseType: "arraybuffer",
@@ -62,7 +60,6 @@ async function fetchImageFromWeb(query) {
     const tempPath = "temp_image.jpg";
     fs.writeFileSync(tempPath, imgBytes.data);
 
-    // Upload to Cloudinary
     const upload = await cloudinary.uploader.upload(tempPath, {
       folder: "auto_images",
       type: "private",
@@ -104,7 +101,6 @@ app.get("/search", async (req, res) => {
       });
     }
 
-    // Generate secure signed Cloudinary URL
     const signedUrl = cloudinary.url(imageDoc.publicId, {
       secure: true,
       sign_url: true,
@@ -119,7 +115,7 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// --------------------- DOWNLOAD IMAGE BY TITLE ---------------------
+// --------------------- Download Route -------------------------
 app.get("/download/:title", async (req, res) => {
   try {
     const title = req.params.title.trim().toLowerCase();
@@ -159,6 +155,6 @@ app.use((req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// --------------------- Start the Server -----------------------
+// --------------------- Start Server ---------------------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server running on port", PORT));
