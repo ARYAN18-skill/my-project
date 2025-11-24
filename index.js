@@ -35,6 +35,7 @@ const imageSchema = new mongoose.Schema({
 
 const Image = mongoose.model("Image", imageSchema);
 
+// --------------------- FREE IMAGE FETCH USING BING (NO API REQUIRED) ---------------------
 async function fetchImageFromWeb(query) {
   try {
     const searchUrl =
@@ -49,18 +50,16 @@ async function fetchImageFromWeb(query) {
 
     const html = response.data;
 
-    // Extract first image URL from Bing HTML
     const match = html.match(/"murl":"(.*?)"/);
     if (!match) {
-      console.log("No image found on Bing");
+      console.log("No Bing Image Found");
       return null;
     }
 
     const imageUrl = match[1];
-    console.log("Fetched image URL (Bing):", imageUrl);
+    console.log("Bing Image URL:", imageUrl);
 
-    // Download the image
-    const imageResponse = await axios.get(imageUrl, {
+    const imgResponse = await axios.get(imageUrl, {
       responseType: "arraybuffer",
       headers: {
         "User-Agent":
@@ -69,11 +68,11 @@ async function fetchImageFromWeb(query) {
       },
     });
 
-    const buffer = Buffer.from(imageResponse.data);
+    const buffer = Buffer.from(imgResponse.data);
     const type = await FileType.fromBuffer(buffer);
 
     if (!type || !type.mime.startsWith("image/")) {
-      console.log("Invalid image downloaded:", buffer.toString("utf8", 0, 200));
+      console.log("INVALID IMAGE from Bing");
       return null;
     }
 
@@ -97,38 +96,6 @@ async function fetchImageFromWeb(query) {
   }
 }
 
-
-
-    // --------------------- VALIDATE IMAGE ---------------------
-    const type = await FileType.fromBuffer(buffer);
-    if (!type || !type.mime.startsWith("image/")) {
-      console.log("INVALID IMAGE RECEIVED FROM WEB");
-      console.log(buffer.toString("utf8", 0, 200));
-      return null;
-    }
-
-    // Save temporary file for Cloudinary
-    const tempPath = "temp." + type.ext;
-    fs.writeFileSync(tempPath, buffer);
-
-    // --------------------- UPLOAD TO CLOUDINARY ---------------------
-    const uploadResult = await cloudinary.uploader.upload(tempPath, {
-      folder: "auto_images",
-      resource_type: "image",
-    });
-
-    fs.unlinkSync(tempPath);
-
-    return {
-      publicId: uploadResult.public_id,
-      imageUrl: uploadResult.secure_url,
-    };
-  } catch (err) {
-    console.log("SerpAPI ERROR:", err.response?.data || err.message);
-    return null;
-  }
-}
-
 // --------------------- SEARCH ROUTE ---------------------
 app.get("/search", async (req, res) => {
   try {
@@ -137,12 +104,12 @@ app.get("/search", async (req, res) => {
     let imageDoc = await Image.findOne({ title });
 
     if (!imageDoc) {
-      console.log("Not in DB → Fetching from SerpAPI");
+      console.log("Not in DB → Fetching from Bing…");
 
       const fetched = await fetchImageFromWeb(title);
 
       if (!fetched) {
-        return res.json({ error: "No image found on the internet." });
+        return res.json({ error: "No image found online." });
       }
 
       imageDoc = await Image.create({
@@ -155,7 +122,7 @@ app.get("/search", async (req, res) => {
     return res.json({ url: imageDoc.imageUrl });
   } catch (err) {
     console.error("Search Error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return res.status(500).json({ error: "Server Error" });
   }
 });
 
@@ -192,4 +159,6 @@ app.use((req, res) => {
 
 // --------------------- START SERVER ---------------------
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Server running on port", PORT));
+app.listen(PORT, () =>
+  console.log("Server running on port", PORT)
+);
