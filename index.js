@@ -5,6 +5,7 @@ const cors = require("cors");
 const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
+const FileType = require("file-type");
 const { v2: cloudinary } = require("cloudinary");
 
 const app = express();
@@ -12,7 +13,7 @@ app.use(express.json());
 app.use(cors());
 app.use(express.static(path.join(__dirname, "public")));
 
-// --------------------- Cloudinary Config (NO SIGNATURE) ---------------------
+// --------------------- Cloudinary Config ---------------------
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
   api_key: process.env.CLOUD_API_KEY,
@@ -34,40 +35,86 @@ const imageSchema = new mongoose.Schema({
 
 const Image = mongoose.model("Image", imageSchema);
 
-// --------------------- FUNCTION: Fetch Image from Web via SerpAPI ----------
 async function fetchImageFromWeb(query) {
   try {
-    const serpURL =
-      "https://serpapi.com/search.json?engine=google_images&q=" +
-      encodeURIComponent(query) +
-      "&api_key=" +
-      process.env.SERP_API_KEY;
+    const searchUrl =
+      "https://www.bing.com/images/search?q=" + encodeURIComponent(query);
 
-    const serpRes = await axios.get(serpURL);
+    const response = await axios.get(searchUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    });
 
-    if (
-      !serpRes.data.images_results ||
-      serpRes.data.images_results.length === 0
-    ) {
-      console.log("No results found on SerpAPI");
+    const html = response.data;
+
+    // Extract first image URL from Bing HTML
+    const match = html.match(/"murl":"(.*?)"/);
+    if (!match) {
+      console.log("No image found on Bing");
       return null;
     }
 
-    const imageUrl = serpRes.data.images_results[0].original;
-    console.log("Fetched image URL from SerpAPI:", imageUrl);
+    const imageUrl = match[1];
+    console.log("Fetched image URL (Bing):", imageUrl);
 
-    // Download image locally
-    const imgBytes = await axios({
-      url: imageUrl,
+    // Download the image
+    const imageResponse = await axios.get(imageUrl, {
       responseType: "arraybuffer",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "image/*;q=0.9,*/*;q=0.8",
+      },
     });
 
-    const tempPath = "temp.jpg";
-    fs.writeFileSync(tempPath, imgBytes.data);
+    const buffer = Buffer.from(imageResponse.data);
+    const type = await FileType.fromBuffer(buffer);
 
-    // Upload to Cloudinary (unsigned, no signature required)
+    if (!type || !type.mime.startsWith("image/")) {
+      console.log("Invalid image downloaded:", buffer.toString("utf8", 0, 200));
+      return null;
+    }
+
+    const tempPath = "temp." + type.ext;
+    fs.writeFileSync(tempPath, buffer);
+
     const uploadResult = await cloudinary.uploader.upload(tempPath, {
       folder: "auto_images",
+      resource_type: "image",
+    });
+
+    fs.unlinkSync(tempPath);
+
+    return {
+      publicId: uploadResult.public_id,
+      imageUrl: uploadResult.secure_url,
+    };
+  } catch (err) {
+    console.log("Image Fetch Error:", err.message);
+    return null;
+  }
+}
+
+
+
+    // --------------------- VALIDATE IMAGE ---------------------
+    const type = await FileType.fromBuffer(buffer);
+    if (!type || !type.mime.startsWith("image/")) {
+      console.log("INVALID IMAGE RECEIVED FROM WEB");
+      console.log(buffer.toString("utf8", 0, 200));
+      return null;
+    }
+
+    // Save temporary file for Cloudinary
+    const tempPath = "temp." + type.ext;
+    fs.writeFileSync(tempPath, buffer);
+
+    // --------------------- UPLOAD TO CLOUDINARY ---------------------
+    const uploadResult = await cloudinary.uploader.upload(tempPath, {
+      folder: "auto_images",
+      resource_type: "image",
     });
 
     fs.unlinkSync(tempPath);
@@ -87,7 +134,6 @@ app.get("/search", async (req, res) => {
   try {
     const title = req.query.title.trim().toLowerCase();
 
-    // Check cache
     let imageDoc = await Image.findOne({ title });
 
     if (!imageDoc) {
@@ -106,7 +152,6 @@ app.get("/search", async (req, res) => {
       });
     }
 
-    // Send stored Cloudinary URL
     return res.json({ url: imageDoc.imageUrl });
   } catch (err) {
     console.error("Search Error:", err);
@@ -114,7 +159,7 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// --------------------- DOWNLOAD IMAGE FROM CLOUDINARY ---------------------
+// --------------------- DOWNLOAD IMAGE ---------------------
 app.get("/download/:title", async (req, res) => {
   try {
     const title = req.params.title.trim().toLowerCase();
